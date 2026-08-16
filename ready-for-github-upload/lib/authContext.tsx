@@ -194,38 +194,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const completeBuyerOnboarding = async (categories: string[], budget: string) => {
-    if (!user || !isConfigured) {
+    if (!isConfigured) return { error: new Error('Supabase not configured.') };
+
+    const { data: authData } = await supabase.auth.getUser();
+    const activeUser = authData?.user || user;
+
+    if (!activeUser) {
       return { error: new Error('Authenticated user required.') };
     }
 
-    // Try update first (if trigger created row upon auth signup)
-    const { data, error: updateErr } = await supabase
+    const { data: existingProf } = await supabase
       .from('profiles')
-      .update({
-        role: 'buyer',
-        buyer_categories: categories,
-        buyer_budget: budget,
-        onboarding_completed: true,
-      })
-      .eq('id', user.id)
-      .select();
+      .select('id')
+      .eq('id', activeUser.id)
+      .maybeSingle();
 
-    if (updateErr) return { error: updateErr };
-
-    // If no row updated, fallback to upsert
-    if (!data || data.length === 0) {
-      const { error: upsertErr } = await supabase
+    if (existingProf) {
+      const { error: updateErr } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || '',
+        .update({
+          role: 'buyer',
+          buyer_categories: categories,
+          buyer_budget: budget,
+          onboarding_completed: true,
+        })
+        .eq('id', activeUser.id);
+
+      if (updateErr) return { error: updateErr };
+    } else {
+      const { error: insertErr } = await supabase
+        .from('profiles')
+        .insert({
+          id: activeUser.id,
+          full_name: activeUser.user_metadata?.full_name || '',
           role: 'buyer',
           buyer_categories: categories,
           buyer_budget: budget,
           onboarding_completed: true,
         });
 
-      if (upsertErr) return { error: upsertErr };
+      if (insertErr) {
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({
+            role: 'buyer',
+            buyer_categories: categories,
+            buyer_budget: budget,
+            onboarding_completed: true,
+          })
+          .eq('id', activeUser.id);
+
+        if (updateErr) return { error: updateErr };
+      }
     }
 
     await refreshProfile();
@@ -233,13 +253,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const completeSellerOnboarding = async (storeName: string, category: string, bio: string) => {
-    if (!user || !isConfigured) {
+    if (!isConfigured) return { error: new Error('Supabase not configured.') };
+
+    const { data: authData } = await supabase.auth.getUser();
+    const activeUser = authData?.user || user;
+
+    if (!activeUser) {
       return { error: new Error('Authenticated user required.') };
     }
 
     let slug = slugifyStoreName(storeName);
 
-    // Check slug collision
     const { data: existing } = await supabase
       .from('seller_profiles')
       .select('id')
@@ -250,36 +274,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       slug = `${slug}-${Math.floor(100 + Math.random() * 900)}`;
     }
 
-    // 1. Update or upsert user profile role to 'seller'
-    const { data: profData, error: updateErr } = await supabase
+    // 1. Update or Insert User Profile
+    const { data: existingProf } = await supabase
       .from('profiles')
-      .update({
-        role: 'seller',
-        onboarding_completed: true,
-      })
-      .eq('id', user.id)
-      .select();
+      .select('id')
+      .eq('id', activeUser.id)
+      .maybeSingle();
 
-    if (updateErr) return { error: updateErr };
-
-    if (!profData || profData.length === 0) {
-      const { error: upsertErr } = await supabase
+    if (existingProf) {
+      const { error: updateErr } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || '',
+        .update({
+          role: 'seller',
+          onboarding_completed: true,
+        })
+        .eq('id', activeUser.id);
+
+      if (updateErr) return { error: updateErr };
+    } else {
+      const { error: insertErr } = await supabase
+        .from('profiles')
+        .insert({
+          id: activeUser.id,
+          full_name: activeUser.user_metadata?.full_name || '',
           role: 'seller',
           onboarding_completed: true,
         });
 
-      if (upsertErr) return { error: upsertErr };
+      if (insertErr) {
+        const { error: updateErr } = await supabase
+          .from('profiles')
+          .update({
+            role: 'seller',
+            onboarding_completed: true,
+          })
+          .eq('id', activeUser.id);
+
+        if (updateErr) return { error: updateErr };
+      }
     }
 
     // 2. Insert Seller Profile
     const { error: storeErr } = await supabase
       .from('seller_profiles')
       .insert({
-        user_id: user.id,
+        user_id: activeUser.id,
         store_name: storeName.trim(),
         store_slug: slug,
         category: category,

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { 
   ShoppingBag, 
   Store, 
@@ -146,9 +147,19 @@ export default function OnboardingPage() {
 
       {/* Error Alert */}
       {errorMsg && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-xs text-red-800 animate-fadeIn">
-          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-          <span>{errorMsg}</span>
+        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-800 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{errorMsg === 'Authenticated user required.' ? 'You must create an account or sign in first to launch a store or profile.' : errorMsg}</span>
+          </div>
+          {(!user || errorMsg === 'Authenticated user required.') && (
+            <Link
+              href="/signup"
+              className="px-4 py-1.5 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shrink-0"
+            >
+              Sign Up / Log In
+            </Link>
+          )}
         </div>
       )}
 
